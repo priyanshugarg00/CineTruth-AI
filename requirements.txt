@@ -1,0 +1,11 @@
+streamlit
+pandas
+plotly
+Pillow
+opencv-python
+numpy
+pytesseract
+SpeechRecognition
+textblob
+trafilatura
+opencv-python-headless
