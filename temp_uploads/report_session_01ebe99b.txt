@@ -1,0 +1,12 @@
+=== VIDEO PROCESSING REPORT ===
+session_id: session_01ebe99b
+source: WhatsApp Image 2026-08-29 at 14.55.58.png
+media_path: C:\Users\Abcom\projects\CineTruth-AI\temp_uploads\ce7b5d70_WhatsApp Image 2026-08-29 at 14.55.58.png
+media_type: image
+metadata: {'media_type': 'image', 'dimensions': '554x554', 'width': 554, 'height': 554, 'format': 'PNG', 'mode': 'RGB'}
+frames_sampled: 0
+frame_paths: []
+pipeline_mode: efficient
+agents: {'face_agent': {'agent': 'Face Consistency Agent', 'status': 'COMPLETED', 'anomaly_score': 0.68, 'details': 'Facial smoothing and unnatural boundary blending around the neck suggest synthetic generation or face modification.', 'signals': ['Unnatural facial skin texture', 'Edge boundary artifacts near jawline', 'Inconsistent specular lighting on facial features']}, 'audio_agent': {'agent': 'Audio Manipulation Agent', 'status': 'SKIPPED', 'anomaly_score': 0.0, 'details': 'Static image source: no audio track to analyze.', 'signals': []}, 'context_agent': {'agent': 'Context Verification Agent', 'status': 'COMPLETED', 'risk_score': 0.65, 'details': 'Depiction of a prominent public figure in a physical restraint scenario presents high contextual improbability.'}}
+final_verdict: {'overall_manipulation_risk': 67, 'executive_summary': 'Visual analysis detected several structural and lighting artifacts indicative of AI media generation. Contextual risk remains elevated due to the improbable scenario depicted.', 'sub_agent_reports': {'face_agent': {'agent': 'Face Consistency Agent', 'status': 'COMPLETED', 'anomaly_score': 0.68, 'details': 'Facial smoothing and unnatural boundary blending around the neck suggest synthetic generation or face modification.', 'signals': ['Unnatural facial skin texture', 'Edge boundary artifacts near jawline', 'Inconsistent specular lighting on facial features']}, 'audio_agent': {'agent': 'Audio Manipulation Agent', 'status': 'SKIPPED', 'anomaly_score': 0.0, 'details': 'Static image source: no audio track to analyze.', 'signals': []}, 'context_agent': {'agent': 'Context Verification Agent', 'status': 'COMPLETED', 'risk_score': 0.65, 'details': 'Depiction of a prominent public figure in a physical restraint scenario presents high contextual improbability.'}}, 'status': 'COMPLETED', 'gemini_requests_used': 1}
+batch_index: 2

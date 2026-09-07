@@ -1,10 +1,53 @@
-streamlit
-pandas
-plotly
-Pillow
-numpy
-pytesseract
-SpeechRecognition
-textblob
-trafilatura
-opencv-python-headless
+# Web Framework & Interface
+streamlit>=1.35.0
+plotly>=5.20.0
+
+# Core AI Engine (Google Gemini Official SDK)
+google-genai>=0.1.0
+
+# Partner Track (ClickHouse DB Integration)
+clickhouse-connect>=0.7.0
+
+# Face Matching & Computer Vision
+opencv-python-headless>=4.9.0
+mediapipe>=0.10.11
+
+# Audio Analysis & Signal Processing
+librosa>=0.10.1
+
+# Data & Environment Helpers
+numpy>=1.26.0
+pandas>=2.2.0
+python-dotenv>=1.0.0
+requests>=2.31.0
+pydantic>=2.7.0
+
+# Web Framework & Interface
+streamlit>=1.35.0
+
+# AI & LLM SDK
+google-genai>=0.1.0
+
+# Reverse Search & API Requests
+requests>=2.31.0
+urllib3>=2.2.0
+
+# Image & Data Processing
+Pillow>=10.3.0
+numpy>=1.26.4
+pandas>=2.2.0
+
+# Environment & Configuration
+python-dotenv>=1.0.1
+
+# Database (ClickHouse integration as used in project)
+clickhouse-connect>=0.7.0
+# Public video-page URL resolver (YouTube/Reddit/etc.)
+yt-dlp
+
+# Bundled FFmpeg fallback for merging YouTube video+audio streams
+imageio-ffmpeg>=0.5.1
+
+# Professional forensic PDF reports
+reportlab>=4.2.0
+boto3

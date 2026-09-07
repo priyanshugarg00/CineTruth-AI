@@ -1,0 +1,12 @@
+=== VIDEO PROCESSING REPORT ===
+session_id: session_ec1d6132
+source: WhatsApp Image 2026-09-01 at 11.35.26.jpeg
+media_path: C:\Users\Abcom\projects\CineTruth-AI\temp_uploads\425807c0_WhatsApp Image 2026-09-01 at 11.35.26.jpeg
+media_type: image
+metadata: {'media_type': 'image', 'dimensions': '1200x1600', 'width': 1200, 'height': 1600, 'format': 'JPEG', 'mode': 'RGB'}
+frames_sampled: 0
+frame_paths: []
+pipeline_mode: efficient
+agents: {'face_agent': {'agent': 'Face Consistency Agent', 'status': 'COMPLETED', 'anomaly_score': 0.35, 'details': 'Consistent facial geometry, natural illumination, and expected skin textures with no synthetic warp patterns.', 'signals': ['Standard mobile compression', 'Natural lighting alignment']}, 'audio_agent': {'agent': 'Audio Manipulation Agent', 'status': 'SKIPPED', 'anomaly_score': 0.0, 'details': 'Static image source: no audio track to analyze.', 'signals': []}, 'context_agent': {'agent': 'Context Verification Agent', 'status': 'COMPLETED', 'risk_score': 0.32, 'details': 'Visual framing and resolution match typical mobile device capture.'}}
+final_verdict: {'overall_manipulation_risk': 34, 'executive_summary': 'Visual screening reveals expected lighting and structural traits consistent with an authentic smartphone capture. No actionable indicators of deepfake manipulation or contextual mismatch were detected.', 'sub_agent_reports': {'face_agent': {'agent': 'Face Consistency Agent', 'status': 'COMPLETED', 'anomaly_score': 0.35, 'details': 'Consistent facial geometry, natural illumination, and expected skin textures with no synthetic warp patterns.', 'signals': ['Standard mobile compression', 'Natural lighting alignment']}, 'audio_agent': {'agent': 'Audio Manipulation Agent', 'status': 'SKIPPED', 'anomaly_score': 0.0, 'details': 'Static image source: no audio track to analyze.', 'signals': []}, 'context_agent': {'agent': 'Context Verification Agent', 'status': 'COMPLETED', 'risk_score': 0.32, 'details': 'Visual framing and resolution match typical mobile device capture.'}}, 'status': 'COMPLETED', 'gemini_requests_used': 1}
+batch_index: 1
