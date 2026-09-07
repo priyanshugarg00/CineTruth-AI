@@ -2,52 +2,41 @@
 streamlit>=1.35.0
 plotly>=5.20.0
 
-# Core AI Engine (Google Gemini Official SDK)
+# Core AI Engine
 google-genai>=0.1.0
 
-# Partner Track (ClickHouse DB Integration)
+# ClickHouse
 clickhouse-connect>=0.7.0
 
-# Face Matching & Computer Vision
-opencv-python-headless>=4.9.0
-mediapipe>=0.10.11
+# Computer Vision
+# Headless build is required for Streamlit Cloud / Linux servers.
+opencv-python-headless==4.11.0.86
 
-# Audio Analysis & Signal Processing
+# Audio Analysis
 librosa>=0.10.1
 
-# Data & Environment Helpers
-numpy>=1.26.0
+# Data & Environment
+# Pin NumPy 1.x for stable OpenCV/scientific-stack compatibility.
+numpy==1.26.4
 pandas>=2.2.0
-python-dotenv>=1.0.0
-requests>=2.31.0
+python-dotenv>=1.0.1
 pydantic>=2.7.0
 
-# Web Framework & Interface
-streamlit>=1.35.0
-
-# AI & LLM SDK
-google-genai>=0.1.0
-
-# Reverse Search & API Requests
+# HTTP / Reverse Search
 requests>=2.31.0
 urllib3>=2.2.0
 
-# Image & Data Processing
+# Images
 Pillow>=10.3.0
-numpy>=1.26.4
-pandas>=2.2.0
 
-# Environment & Configuration
-python-dotenv>=1.0.1
-
-# Database (ClickHouse integration as used in project)
-clickhouse-connect>=0.7.0
-# Public video-page URL resolver (YouTube/Reddit/etc.)
+# Public video-page URL resolver
 yt-dlp
 
-# Bundled FFmpeg fallback for merging YouTube video+audio streams
+# Bundled FFmpeg fallback
 imageio-ffmpeg>=0.5.1
 
-# Professional forensic PDF reports
+# PDF Reports
 reportlab>=4.2.0
-boto3
+
+# Cloudflare R2 / S3-compatible storage
+boto3>=1.34.0
