@@ -4,6 +4,7 @@ import uuid
 import requests
 
 from config import Config
+from utils.gemini_client import generate_content_with_fallback
 from google import genai
 
 try:
@@ -123,7 +124,11 @@ Requested notice type: {notice_type}
 Return plain text only.
 """
             try:
-                response = self.client.models.generate_content(model=Config.GEMINI_MODEL, contents=prompt)
+                response, _ = generate_content_with_fallback(
+                    self.client,
+                    contents=prompt,
+                    primary_model=Config.GEMINI_MODEL,
+                )
                 notice_body = (response.text or "").strip()
             except Exception:
                 notice_body = ""

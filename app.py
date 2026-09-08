@@ -453,8 +453,21 @@ with tab1:
                 ):
                     if verdict_status == "QUOTA_EXCEEDED":
                         st.warning(
-                            "Gemini quota is exhausted for this model/project. "
-                            "No risk percentage is shown because the AI analysis did not run."
+                            verdict.get(
+                                "executive_summary",
+                                "Gemini quota is exhausted. Automatic retries/fallbacks were attempted, but no score was generated.",
+                            )
+                        )
+                    elif verdict_status == "TEMPORARILY_UNAVAILABLE":
+                        st.warning(
+                            verdict.get(
+                                "executive_summary",
+                                "Gemini is temporarily busy. Automatic retries and fallback models were attempted. Please retry shortly.",
+                            )
+                        )
+                    elif verdict_status == "AUTH_ERROR":
+                        st.error(
+                            "Gemini authorization failed. Check GEMINI_API_KEY in your Streamlit secrets and API project permissions."
                         )
                     elif risk_score is None:
                         st.error(verdict.get("executive_summary", "No reliable forensic score could be generated."))
@@ -471,9 +484,17 @@ with tab1:
                             unsafe_allow_html=True,
                         )
 
+                    gemini_model = verdict.get("gemini_model_used")
+                    gemini_attempts = verdict.get("gemini_requests_used", "N/A")
+                    gemini_caption = f"Gemini attempts: {gemini_attempts}"
+                    if gemini_model:
+                        gemini_caption += f" · Model used: {gemini_model}"
+                    elif verdict.get("gemini_models_tried"):
+                        gemini_caption += " · Models tried: " + ", ".join(verdict.get("gemini_models_tried", []))
+
                     st.caption(
                         f"Source: {source} · Pipeline mode: {result.get('pipeline_mode', 'unknown')} · "
-                        f"Gemini requests: {verdict.get('gemini_requests_used', 'N/A')}"
+                        f"{gemini_caption}"
                     )
 
                     _render_match_graph(result)

@@ -112,12 +112,33 @@ class Pipeline:
             }
             # master synthesis is local now, so even full mode saves one request.
             final_verdict = self.master_agent.synthesize_verdict(agent_outputs)
-            final_verdict["status"] = "COMPLETED" if any(
-                item.get("status") == "COMPLETED" for item in agent_outputs.values()
-            ) else "ERROR"
+            statuses = [str(item.get("status", "ERROR")) for item in agent_outputs.values()]
+            if any(status == "COMPLETED" for status in statuses):
+                final_verdict["status"] = "COMPLETED"
+            elif any(status == "QUOTA_EXCEEDED" for status in statuses):
+                final_verdict["status"] = "QUOTA_EXCEEDED"
+            elif any(status == "TEMPORARILY_UNAVAILABLE" for status in statuses):
+                final_verdict["status"] = "TEMPORARILY_UNAVAILABLE"
+            elif any(status == "AUTH_ERROR" for status in statuses):
+                final_verdict["status"] = "AUTH_ERROR"
+            else:
+                final_verdict["status"] = "ERROR"
+
             final_verdict["gemini_requests_used"] = sum(
-                1 for item in agent_outputs.values() if item.get("status") in {"COMPLETED", "ERROR"}
+                int(item.get("gemini_requests_used", 0) or 0) for item in agent_outputs.values()
             )
+            used_models = [
+                item.get("gemini_model_used")
+                for item in agent_outputs.values()
+                if item.get("gemini_model_used")
+            ]
+            final_verdict["gemini_model_used"] = used_models[0] if used_models else None
+            tried_models = []
+            for item in agent_outputs.values():
+                for model in item.get("gemini_models_tried", []) or []:
+                    if model not in tried_models:
+                        tried_models.append(model)
+            final_verdict["gemini_models_tried"] = tried_models
 
         # Save scan result to ClickHouse
         try:

@@ -1,0 +1,17 @@
+CineTruth AI - Gemini 503 fix
+
+1. Copy these files into the same paths in your project.
+2. Install/update dependencies:
+   python -m pip install -r requirements.txt
+3. Keep GEMINI_PIPELINE_MODE=efficient for the lowest request usage.
+4. Optional Streamlit/.env settings:
+   GEMINI_MODEL=gemini-3.8-flash
+   GEMINI_FALLBACK_MODELS=gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash,gemini-3.5-flash-lite
+   GEMINI_RETRY_ATTEMPTS=3
+   GEMINI_RETRY_INITIAL_DELAY=1.5
+   GEMINI_RETRY_MAX_DELAY=8
+5. Push to GitHub and reboot/redeploy the Streamlit app.
+
+The fix retries HTTP 429/503-style transient failures with exponential backoff,
+then tries stable fallback Gemini models. The UI now reports attempts/model used
+and does not expose the full raw 503 JSON to users.

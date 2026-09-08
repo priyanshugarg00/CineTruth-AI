@@ -7,6 +7,11 @@ from google import genai
 from google.genai import types
 
 from config import Config
+from utils.gemini_client import (
+    GeminiRequestFailure,
+    generate_content_with_fallback,
+    run_transient_operation,
+)
 
 
 class GeminiMasterSynthesizer:
@@ -56,13 +61,19 @@ class GeminiMasterSynthesizer:
             if state_name != "PROCESSING":
                 return uploaded
             time.sleep(1)
-            uploaded = self.client.files.get(name=uploaded.name)
+            uploaded = run_transient_operation(
+                lambda: self.client.files.get(name=uploaded.name),
+                operation_name="Gemini file status check",
+            )
         return uploaded
 
     def _media_content(self, media_path: str):
         ext = os.path.splitext(media_path)[1].lower()
         if ext in self.VIDEO_EXTENSIONS:
-            uploaded = self.client.files.upload(file=media_path)
+            uploaded = run_transient_operation(
+                lambda: self.client.files.upload(file=media_path),
+                operation_name="Gemini video upload",
+            )
             return self._wait_for_file(uploaded)
 
         mime_type = mimetypes.guess_type(media_path)[0] or "image/jpeg"
@@ -133,9 +144,10 @@ All numeric scores must be between 0 and 1.
 For an image, audio.status MUST be "SKIPPED" and audio.anomaly_score MUST be 0.
 """
 
-            response = self.client.models.generate_content(
-                model=Config.GEMINI_MODEL,
+            response, gemini_meta = generate_content_with_fallback(
+                self.client,
                 contents=[media, prompt],
+                primary_model=Config.GEMINI_MODEL,
             )
             data = self._parse_json(response.text)
 
@@ -185,18 +197,45 @@ For an image, audio.status MUST be "SKIPPED" and audio.anomaly_score MUST be 0.
             }
             verdict = self.synthesize_verdict(agents, model_summary=str(data.get("executive_summary") or ""))
             verdict["status"] = "COMPLETED"
-            verdict["gemini_requests_used"] = 1
+            verdict["gemini_requests_used"] = gemini_meta.requests_used
+            verdict["gemini_retries_used"] = gemini_meta.retries_used
+            verdict["gemini_model_used"] = gemini_meta.model_used
+            verdict["gemini_models_tried"] = gemini_meta.models_tried
             return {"agents": agents, "final_verdict": verdict}
 
+        except GeminiRequestFailure as exc:
+            if exc.kind == "QUOTA_EXCEEDED":
+                return self._quota_bundle(
+                    exc.technical_error,
+                    media_type,
+                    requests_used=exc.requests_used,
+                    models_tried=exc.models_tried,
+                )
+            return self._unavailable_bundle(
+                exc.public_message,
+                media_type,
+                status=exc.kind,
+                requests_used=exc.requests_used,
+                models_tried=exc.models_tried,
+                technical_error=exc.technical_error,
+            )
         except Exception as exc:
-            if self._is_daily_quota_error(exc):
-                return self._quota_bundle(str(exc), media_type)
-            return self._unavailable_bundle(f"Gemini analysis failed: {exc}", media_type)
+            return self._unavailable_bundle(
+                "Gemini analysis could not be completed. Please retry the scan.",
+                media_type,
+                technical_error=str(exc),
+            )
 
-    def _quota_bundle(self, raw_error: str, media_type: str) -> dict:
+    def _quota_bundle(
+        self,
+        raw_error: str,
+        media_type: str,
+        requests_used: int = 0,
+        models_tried: list[str] | None = None,
+    ) -> dict:
         message = (
-            "Gemini free-tier daily request quota is exhausted for the configured model. "
-            "No forensic score was generated. Wait for the daily quota reset or use a project with available quota/billing."
+            "Gemini quota is currently exhausted for the available model/project. "
+            "Automatic retries and fallback models were attempted, but no AI score could be generated."
         )
         agents = self._error_agents(message, media_type, status="QUOTA_EXCEEDED")
         return {
@@ -206,23 +245,33 @@ For an image, audio.status MUST be "SKIPPED" and audio.anomaly_score MUST be 0.
                 "overall_manipulation_risk": None,
                 "executive_summary": message,
                 "sub_agent_reports": agents,
-                "gemini_requests_used": 0,
+                "gemini_requests_used": requests_used,
+                "gemini_models_tried": models_tried or [],
                 "technical_error": raw_error,
             },
         }
 
-    def _unavailable_bundle(self, message: str, media_type: str) -> dict:
-        agents = self._error_agents(message, media_type, status="ERROR")
-        return {
-            "agents": agents,
-            "final_verdict": {
-                "status": "ERROR",
-                "overall_manipulation_risk": None,
-                "executive_summary": message,
-                "sub_agent_reports": agents,
-                "gemini_requests_used": 0,
-            },
+    def _unavailable_bundle(
+        self,
+        message: str,
+        media_type: str,
+        status: str = "ERROR",
+        requests_used: int = 0,
+        models_tried: list[str] | None = None,
+        technical_error: str | None = None,
+    ) -> dict:
+        agents = self._error_agents(message, media_type, status=status)
+        verdict = {
+            "status": status,
+            "overall_manipulation_risk": None,
+            "executive_summary": message,
+            "sub_agent_reports": agents,
+            "gemini_requests_used": requests_used,
+            "gemini_models_tried": models_tried or [],
         }
+        if technical_error:
+            verdict["technical_error"] = technical_error
+        return {"agents": agents, "final_verdict": verdict}
 
     @staticmethod
     def _error_agents(message: str, media_type: str, status: str) -> dict:

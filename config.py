@@ -8,8 +8,23 @@ load_dotenv()
 class Config:
     # Gemini
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-    GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash").strip()
-    # efficient = one Gemini generate_content request per scan; full = legacy multi-call pipeline
+    # Primary model. If Streamlit secrets already set GEMINI_MODEL, that value remains primary.
+    GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash").strip()
+    # Comma-separated stable fallbacks. Duplicates are removed at runtime.
+    GEMINI_FALLBACK_MODELS = tuple(
+        model.strip()
+        for model in os.getenv(
+            "GEMINI_FALLBACK_MODELS",
+            "gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash,gemini-3.5-flash-lite",
+        ).split(",")
+        if model.strip()
+    )
+    # Number of generate_content attempts PER model, including the first request.
+    GEMINI_RETRY_ATTEMPTS = int(os.getenv("GEMINI_RETRY_ATTEMPTS", "3"))
+    GEMINI_FILE_RETRY_ATTEMPTS = int(os.getenv("GEMINI_FILE_RETRY_ATTEMPTS", "3"))
+    GEMINI_RETRY_INITIAL_DELAY = float(os.getenv("GEMINI_RETRY_INITIAL_DELAY", "1.5"))
+    GEMINI_RETRY_MAX_DELAY = float(os.getenv("GEMINI_RETRY_MAX_DELAY", "8"))
+    # efficient = one logical Gemini analysis per scan; retries/fallback attempts may make multiple API calls.
     GEMINI_PIPELINE_MODE = os.getenv("GEMINI_PIPELINE_MODE", "efficient").strip().lower()
 
     # Reverse image search

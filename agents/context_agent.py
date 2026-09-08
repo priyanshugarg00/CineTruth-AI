@@ -3,6 +3,7 @@ import json
 from google import genai
 
 from config import Config
+from utils.gemini_client import GeminiRequestFailure, generate_content_with_fallback
 from database.clickhouse_db import db_manager
 
 
@@ -26,6 +27,8 @@ class ContextVerificationAgent:
                 "status": "ERROR",
                 "risk_score": 0.0,
                 "details": "GEMINI_API_KEY is not configured.",
+                "gemini_requests_used": 0,
+                "gemini_models_tried": [],
             }
         else:
             prompt = f"""
@@ -45,9 +48,10 @@ Return ONLY valid JSON:
 `risk_score` must be between 0 and 1 and represents contextual verification risk.
 """
             try:
-                response = self.client.models.generate_content(
-                    model=Config.GEMINI_MODEL,
+                response, gemini_meta = generate_content_with_fallback(
+                    self.client,
                     contents=prompt,
+                    primary_model=Config.GEMINI_MODEL,
                 )
                 data = self._parse_json(response.text)
                 risk_score = max(0.0, min(1.0, float(data.get("risk_score", 0.0))))
@@ -57,6 +61,19 @@ Return ONLY valid JSON:
                     "status": "COMPLETED",
                     "risk_score": risk_score,
                     "details": details,
+                    "gemini_requests_used": gemini_meta.requests_used,
+                    "gemini_model_used": gemini_meta.model_used,
+                    "gemini_models_tried": gemini_meta.models_tried,
+                }
+            except GeminiRequestFailure as exc:
+                result = {
+                    "agent": "Context Verification Agent",
+                    "status": exc.kind,
+                    "risk_score": 0.0,
+                    "details": exc.public_message,
+                    "gemini_requests_used": exc.requests_used,
+                    "gemini_models_tried": exc.models_tried,
+                    "technical_error": exc.technical_error,
                 }
             except Exception as exc:
                 result = {
@@ -64,6 +81,8 @@ Return ONLY valid JSON:
                     "status": "ERROR",
                     "risk_score": 0.0,
                     "details": f"Context verification failed: {exc}",
+                    "gemini_requests_used": 0,
+                    "gemini_models_tried": [],
                 }
 
         db_manager.log_agent_execution(

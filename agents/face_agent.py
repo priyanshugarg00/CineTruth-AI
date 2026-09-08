@@ -7,6 +7,11 @@ from google import genai
 from google.genai import types
 
 from config import Config
+from utils.gemini_client import (
+    GeminiRequestFailure,
+    generate_content_with_fallback,
+    run_transient_operation,
+)
 from database.clickhouse_db import db_manager
 
 
@@ -47,9 +52,10 @@ Do NOT claim certainty. Return ONLY valid JSON:
 }}
 `anomaly_score` must be between 0 and 1 and should represent manipulation-indicator risk, not proof of a deepfake.
 """
-        response = self.client.models.generate_content(
-            model=Config.GEMINI_MODEL,
+        response, gemini_meta = generate_content_with_fallback(
+            self.client,
             contents=[*parts, prompt],
+            primary_model=Config.GEMINI_MODEL,
         )
         data = self._parse_json(response.text)
         score = max(0.0, min(1.0, float(data.get("anomaly_score", 0.0))))
@@ -60,10 +66,16 @@ Do NOT claim certainty. Return ONLY valid JSON:
             "anomaly_score": score,
             "details": str(data.get("details", "Visual analysis completed.")),
             "signals": [str(x) for x in signals[:8]],
+            "gemini_requests_used": gemini_meta.requests_used,
+            "gemini_model_used": gemini_meta.model_used,
+            "gemini_models_tried": gemini_meta.models_tried,
         }
 
     def _analyze_video_file(self, video_path: str, source_label: str) -> dict:
-        uploaded = self.client.files.upload(file=video_path)
+        uploaded = run_transient_operation(
+            lambda: self.client.files.upload(file=video_path),
+            operation_name="Gemini video upload",
+        )
 
         # Video files can require server-side processing before Gemini can inspect them.
         for _ in range(30):
@@ -72,7 +84,10 @@ Do NOT claim certainty. Return ONLY valid JSON:
             if state_name != "PROCESSING":
                 break
             time.sleep(1)
-            uploaded = self.client.files.get(name=uploaded.name)
+            uploaded = run_transient_operation(
+                lambda: self.client.files.get(name=uploaded.name),
+                operation_name="Gemini file status check",
+            )
 
         prompt = f"""
 You are CineTruth AI's visual forensic agent. Analyze the visual stream in this video from: {source_label}.
@@ -85,9 +100,10 @@ Do NOT claim certainty. Return ONLY valid JSON:
 }}
 `anomaly_score` must be between 0 and 1 and represents manipulation-indicator risk only.
 """
-        response = self.client.models.generate_content(
-            model=Config.GEMINI_MODEL,
+        response, gemini_meta = generate_content_with_fallback(
+            self.client,
             contents=[uploaded, prompt],
+            primary_model=Config.GEMINI_MODEL,
         )
         data = self._parse_json(response.text)
         score = max(0.0, min(1.0, float(data.get("anomaly_score", 0.0))))
@@ -98,6 +114,9 @@ Do NOT claim certainty. Return ONLY valid JSON:
             "anomaly_score": score,
             "details": str(data.get("details", "Visual analysis completed.")),
             "signals": [str(x) for x in signals[:8]],
+            "gemini_requests_used": gemini_meta.requests_used,
+            "gemini_model_used": gemini_meta.model_used,
+            "gemini_models_tried": gemini_meta.models_tried,
         }
 
     def analyze_faces(
@@ -116,6 +135,8 @@ Do NOT claim certainty. Return ONLY valid JSON:
                 "anomaly_score": 0.0,
                 "details": "GEMINI_API_KEY is not configured.",
                 "signals": [],
+                "gemini_requests_used": 0,
+                "gemini_models_tried": [],
             }
         else:
             try:
@@ -135,6 +156,17 @@ Do NOT claim certainty. Return ONLY valid JSON:
                     "status": "COMPLETED",
                     **analysis,
                 }
+            except GeminiRequestFailure as exc:
+                result = {
+                    "agent": "Face Consistency Agent",
+                    "status": exc.kind,
+                    "anomaly_score": 0.0,
+                    "details": exc.public_message,
+                    "signals": [],
+                    "gemini_requests_used": exc.requests_used,
+                    "gemini_models_tried": exc.models_tried,
+                    "technical_error": exc.technical_error,
+                }
             except Exception as exc:
                 result = {
                     "agent": "Face Consistency Agent",
@@ -142,6 +174,8 @@ Do NOT claim certainty. Return ONLY valid JSON:
                     "anomaly_score": 0.0,
                     "details": f"Visual analysis failed: {exc}",
                     "signals": [],
+                    "gemini_requests_used": 0,
+                    "gemini_models_tried": [],
                 }
 
         db_manager.log_agent_execution(
