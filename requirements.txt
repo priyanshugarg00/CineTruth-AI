@@ -30,7 +30,14 @@ urllib3>=2.2.0
 Pillow>=10.3.0
 
 # Public video-page URL resolver
-yt-dlp
+# default => yt-dlp-ejs and its recommended Python-side dependencies
+# curl-cffi => browser/TLS impersonation support, useful on hosted servers
+yt-dlp[default,curl-cffi]>=2026.8.19
+
+# Optional/advanced YouTube PO-token provider plugin.
+# To use it in production, run the matching private bgutil provider service
+# and set YTDLP_POT_PROVIDER_URL in Streamlit Secrets/environment.
+bgutil-ytdlp-pot-provider>=2.0.0
 
 # Bundled FFmpeg fallback
 imageio-ffmpeg>=0.5.1

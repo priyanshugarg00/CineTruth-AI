@@ -217,47 +217,193 @@ class MediaStorage:
         self._client.list_objects_v2(Bucket=self.bucket, MaxKeys=1)
         return True
 
-    def _download_with_ytdlp(self, url: str, work_dir: str) -> str:
-        try:
-            import yt_dlp
-        except ImportError as exc:
-            raise RuntimeError(
-                "This URL is a webpage, not a direct media file. Install yt-dlp with: pip install yt-dlp"
-            ) from exc
+    @staticmethod
+    def _is_youtube_url(url: str) -> bool:
+        """Return True for normal YouTube and youtu.be video/share URLs."""
+        host = (urlparse((url or "").strip()).hostname or "").lower()
+        host = host.removeprefix("www.").removeprefix("m.")
+        return host in {
+            "youtube.com",
+            "youtu.be",
+            "youtube-nocookie.com",
+            "music.youtube.com",
+        } or host.endswith(".youtube.com")
 
-        token = uuid.uuid4().hex[:10]
+    @staticmethod
+    def _is_known_video_page_url(url: str) -> bool:
+        """Hosts that should go straight to yt-dlp instead of requests.get()."""
+        host = (urlparse((url or "").strip()).hostname or "").lower()
+        host = host.removeprefix("www.").removeprefix("m.")
+        domains = (
+            "youtube.com",
+            "youtu.be",
+            "youtube-nocookie.com",
+            "instagram.com",
+            "facebook.com",
+            "fb.watch",
+            "tiktok.com",
+            "twitter.com",
+            "x.com",
+            "vimeo.com",
+            "dailymotion.com",
+        )
+        return any(host == d or host.endswith(f".{d}") for d in domains)
+
+    @staticmethod
+    def _runtime_name() -> str | None:
+        """Find a JS runtime usable by current yt-dlp YouTube challenge solver."""
+        import shutil
+
+        # Deno is preferred by yt-dlp, but Node is common on hosted platforms.
+        for executable, runtime_name in (
+            ("deno", "deno"),
+            ("node", "node"),
+            ("qjs", "quickjs"),
+        ):
+            if shutil.which(executable):
+                return runtime_name
+        return None
+
+    def _base_ytdlp_options(self, work_dir: str, token: str) -> dict:
         output_template = os.path.join(work_dir, f"url_{token}.%(ext)s")
-        ydl_opts = {
+        opts = {
             "outtmpl": output_template,
             "noplaylist": True,
             "quiet": True,
             "no_warnings": True,
             "restrictfilenames": True,
             "max_filesize": self.MAX_MEDIA_BYTES,
-            "socket_timeout": 40,
-            "retries": 3,
-            "fragment_retries": 3,
+            "socket_timeout": 45,
+            "retries": 4,
+            "fragment_retries": 4,
+            "extractor_retries": 3,
+            "file_access_retries": 3,
+            "concurrent_fragment_downloads": 1,
             "merge_output_format": "mp4",
+            "http_headers": {
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/152.0.0.0 Safari/537.36"
+                ),
+                "Accept-Language": "en-US,en;q=0.9",
+            },
         }
+
+        # Optional authenticated/session setup. Never commit cookies to GitHub.
+        cookie_file = (os.getenv("YTDLP_COOKIES_FILE") or "").strip()
+        if cookie_file and os.path.isfile(cookie_file):
+            opts["cookiefile"] = cookie_file
+
+        proxy = (os.getenv("YTDLP_PROXY") or "").strip()
+        if proxy:
+            opts["proxy"] = proxy
 
         try:
             import imageio_ffmpeg
 
-            ydl_opts["ffmpeg_location"] = imageio_ffmpeg.get_ffmpeg_exe()
+            opts["ffmpeg_location"] = imageio_ffmpeg.get_ffmpeg_exe()
         except Exception:
             pass
 
+        runtime = self._runtime_name()
+        if runtime:
+            # yt-dlp 2026 YouTube support uses EJS + a JS runtime.
+            opts["js_runtimes"] = {runtime: {}}
+
+        return opts
+
+    def _download_with_ytdlp(self, url: str, work_dir: str) -> str:
         try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=True)
-                if not info:
-                    raise RuntimeError("No downloadable media was found on this URL.")
-        except Exception as exc:
+            import yt_dlp
+        except ImportError as exc:
             raise RuntimeError(
-                "The URL opened as a webpage, but its video could not be downloaded. "
-                "The site may require login/cookies, block automated downloads, or the post may be private. "
-                f"Details: {exc}"
+                "This URL is a webpage, not a direct media file. Install yt-dlp with: "
+                "pip install 'yt-dlp[default,curl-cffi]'"
             ) from exc
+
+        token = uuid.uuid4().hex[:10]
+        base_opts = self._base_ytdlp_options(work_dir, token)
+        is_youtube = self._is_youtube_url(url)
+
+        # Each strategy gets a fresh dict. This is important because yt-dlp may
+        # mutate nested options during extraction.
+        strategies: list[tuple[str, dict]] = []
+
+        # On YouTube, a hosted/datacenter IP can be treated differently from a
+        # local residential IP. Prefer strategies that are more cloud-friendly.
+        if is_youtube:
+            pot_provider_url = (os.getenv("YTDLP_POT_PROVIDER_URL") or "").strip().rstrip("/")
+            if pot_provider_url:
+                pot_opts = dict(base_opts)
+                pot_opts["format"] = (
+                    "bestvideo[height<=1080]+bestaudio/"
+                    "best[height<=1080]/best"
+                )
+                pot_opts["extractor_args"] = {
+                    "youtube": {"player_client": ["mweb"]},
+                    "youtubepot-bgutilhttp": {"base_url": [pot_provider_url]},
+                }
+                strategies.append(("youtube-mweb-pot", pot_opts))
+
+            # web_safari exposes HLS on videos where it is available. HLS can
+            # avoid some direct GVS format-URL failures seen on server IPs.
+            hls_opts = dict(base_opts)
+            hls_opts["format"] = (
+                "bestvideo[protocol^=m3u8][height<=1080]+"
+                "bestaudio[protocol^=m3u8]/"
+                "best[protocol^=m3u8][height<=1080]/"
+                "best[ext=mp4][height<=1080]/best"
+            )
+            hls_opts["extractor_args"] = {
+                "youtube": {"player_client": ["web_safari"]}
+            }
+            strategies.append(("youtube-web-safari-hls", hls_opts))
+
+            # Standard current yt-dlp extraction with browser TLS
+            # impersonation support supplied by curl_cffi when available.
+            default_opts = dict(base_opts)
+            default_opts["format"] = (
+                "bestvideo[height<=1080]+bestaudio/"
+                "best[height<=1080]/best"
+            )
+            default_opts["impersonate"] = "chrome"
+            strategies.append(("youtube-default", default_opts))
+        else:
+            generic_opts = dict(base_opts)
+            generic_opts["format"] = "bestvideo+bestaudio/best"
+            generic_opts["impersonate"] = "chrome"
+            strategies.append(("generic", generic_opts))
+
+        errors: list[str] = []
+        for strategy_name, ydl_opts in strategies:
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=True)
+                    if not info:
+                        raise RuntimeError("No downloadable media was found on this URL.")
+                break
+            except Exception as exc:
+                errors.append(f"{strategy_name}: {exc}")
+        else:
+            combined = " | ".join(errors[-3:])
+            if is_youtube and any(
+                marker in combined.lower()
+                for marker in ("403", "forbidden", "confirm you're not a bot", "sign in")
+            ):
+                raise RuntimeError(
+                    "YouTube blocked video retrieval from this hosted server (HTTP 403 / bot check). "
+                    "The same URL can still work locally because your local IP/session is different. "
+                    "The app already tried multiple yt-dlp clients. For the most reliable live fix, "
+                    "configure YTDLP_POT_PROVIDER_URL to a private bgutil PO-token provider, or let the "
+                    "user upload the video file directly. "
+                    f"Technical details: {combined}"
+                )
+            raise RuntimeError(
+                "The URL opened as a webpage, but its media could not be downloaded. "
+                "The site may require login/cookies, block automated downloads, or the post may be private. "
+                f"Details: {combined}"
+            )
 
         candidates = []
         for name in os.listdir(work_dir):
@@ -278,11 +424,22 @@ class MediaStorage:
     def ingest_url(self, url: str) -> dict:
         """Resolve a direct media/video-page URL and persist the resulting media in R2."""
         self._require_config()
-        parsed = urlparse((url or "").strip())
+        url = (url or "").strip()
+        parsed = urlparse(url)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             raise ValueError("Please enter a valid http:// or https:// media URL.")
 
         with tempfile.TemporaryDirectory(prefix="cinetruth_url_") as work_dir:
+            # Do not first GET YouTube/social pages with requests. On hosted
+            # servers that extra request is unnecessary and can contribute to
+            # anti-bot/rate-limit behavior. Let yt-dlp own the whole session.
+            if self._is_known_video_page_url(url):
+                local_path = self._download_with_ytdlp(url, work_dir)
+                return self.upload_local_file(
+                    local_path,
+                    filename=os.path.basename(local_path),
+                )
+
             response = requests.get(
                 url,
                 timeout=40,
@@ -291,8 +448,9 @@ class MediaStorage:
                     "User-Agent": (
                         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                         "AppleWebKit/537.36 (KHTML, like Gecko) "
-                        "Chrome/131.0 Safari/537.36"
-                    )
+                        "Chrome/152.0.0.0 Safari/537.36"
+                    ),
+                    "Accept-Language": "en-US,en;q=0.9",
                 },
                 allow_redirects=True,
             )
